@@ -18,6 +18,9 @@ build/
 *.swp
 *~.nib
 
+# Claude Code
+CLAUDE.md
+
 # Temporary files
 *.tmp
 *.temp
