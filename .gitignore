@@ -1,0 +1,26 @@
+# Build
+.build/
+build/
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+
+# Swift Package Manager
+.swiftpm/
+
+# macOS
+.DS_Store
+*.swp
+*~.nib
+
+# Temporary files
+*.tmp
+*.temp
+
+# Iconset (intermediate files)
+*.iconset/
