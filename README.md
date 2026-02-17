@@ -36,9 +36,13 @@
 ## インストール
 
 ### リリース版を使う場合
-1. [Releases](https://github.com/Shinichi-Ohki/GuruGuruCapture/releases) から `GuruGuruCapture.app` をダウンロード
-2. アプリケーションフォルダにコピー
-3. 起動
+1. [Releases](https://github.com/Shinichi-Ohki/GuruGuruCapture/releases) から `GuruGuruCapture.zip` をダウンロードして解凍
+2. ターミナルで隔離属性を解除：
+   ```bash
+   xattr -rc /path/to/GuruGuruCapture.app
+   ```
+3. アプリケーションフォルダにコピー
+4. 起動
 
 ### ソースからビルドする場合
 
