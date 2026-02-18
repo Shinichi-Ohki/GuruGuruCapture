@@ -7,6 +7,15 @@ import ApplicationServices
 class Settings {
     static let shared = Settings()
 
+    // MARK: Defaults
+    struct Defaults {
+        static let windowDuration: Double = 1.4
+        static let minPoints: Int = 25
+        static let triggerAngle: Double = 1.5  // 回数（1.5 = 1周半）
+        static let minRadius: Double = 30.0
+        static let cooldown: Double = 2.5
+    }
+
     enum SaveDestination: Int {
         case both = 0          // ファイル + クリップボード
         case fileOnly = 1      // ファイルのみ
@@ -40,19 +49,63 @@ class Settings {
         }
         return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
     }
+
+    // MARK: Detection Settings
+
+    var windowDuration: Double {
+        get { UserDefaults.standard.double(forKey: "detection.windowDuration").clamped(to: 0.5...3.0, default: Defaults.windowDuration) }
+        set { UserDefaults.standard.set(newValue, forKey: "detection.windowDuration") }
+    }
+
+    var minPoints: Int {
+        get { UserDefaults.standard.integer(forKey: "detection.minPoints").clamped(to: 10...50, default: Defaults.minPoints) }
+        set { UserDefaults.standard.set(newValue, forKey: "detection.minPoints") }
+    }
+
+    var triggerAngle: Double {
+        get { UserDefaults.standard.double(forKey: "detection.triggerAngle").clamped(to: 0.5...3.0, default: Defaults.triggerAngle) }
+        set { UserDefaults.standard.set(newValue, forKey: "detection.triggerAngle") }
+    }
+
+    var minRadius: Double {
+        get { UserDefaults.standard.double(forKey: "detection.minRadius").clamped(to: 10...100, default: Defaults.minRadius) }
+        set { UserDefaults.standard.set(newValue, forKey: "detection.minRadius") }
+    }
+
+    var cooldown: Double {
+        get { UserDefaults.standard.double(forKey: "detection.cooldown").clamped(to: 0.5...5.0, default: Defaults.cooldown) }
+        set { UserDefaults.standard.set(newValue, forKey: "detection.cooldown") }
+    }
+
+    func resetDetectionToDefaults() {
+        windowDuration = Defaults.windowDuration
+        minPoints = Defaults.minPoints
+        triggerAngle = Defaults.triggerAngle
+        minRadius = Defaults.minRadius
+        cooldown = Defaults.cooldown
+    }
+}
+
+extension Comparable {
+    func clamped(to range: ClosedRange<Self>, default defaultValue: Self) -> Self {
+        if self < range.lowerBound || self > range.upperBound { return defaultValue }
+        return self
+    }
 }
 
 // MARK: - Settings Window Controller
 
 class SettingsWindowController: NSWindowController {
     private let settings = Settings.shared
+    private let tabView = NSTabView()
 
-    private var radioButtons: [NSButton] = []
+    // 保存先タブ
+    private var saveRadioButtons: [NSButton] = []
     private var pathField: NSTextField!
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -60,13 +113,46 @@ class SettingsWindowController: NSWindowController {
         window.title = "設定"
         self.init(window: window)
 
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 300))
+        tabView.frame = NSRect(x: 12, y: 50, width: 396, height: 238)
+        tabView.tabPosition = .top
+
+        // タブ1: 保存先
+        let saveTab = NSTabViewItem()
+        saveTab.label = "保存先"
+        saveTab.view = createSaveTabView()
+        tabView.addTabViewItem(saveTab)
+
+        // タブ2: 検出感度
+        let detectionTab = NSTabViewItem()
+        detectionTab.label = "検出感度"
+        detectionTab.view = createDetectionTabView()
+        tabView.addTabViewItem(detectionTab)
+
+        contentView.addSubview(tabView)
+
+        // デフォルトに戻すボタン
+        let resetButton = NSButton(frame: NSRect(x: 12, y: 12, width: 230, height: 24))
+        resetButton.title = "このタブの内容をデフォルトに戻す"
+        resetButton.bezelStyle = .rounded
+        resetButton.target = self
+        resetButton.action = #selector(resetCurrentTabToDefaults)
+        contentView.addSubview(resetButton)
+
+        window.contentView = contentView
+        window.center()
+    }
+
+    // MARK: - Save Tab
+
+    private func createSaveTabView() -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 396, height: 238))
 
         // 保存先ラジオボタン
         let destLabel = NSTextField(labelWithString: "保存先:")
         destLabel.frame = NSRect(x: 20, y: 160, width: 80, height: 24)
         destLabel.alignment = .right
-        contentView.addSubview(destLabel)
+        view.addSubview(destLabel)
 
         let titles = ["ファイル + クリップボード", "ファイルのみ", "クリップボードのみ"]
         var prevButton: NSButton?
@@ -75,43 +161,33 @@ class SettingsWindowController: NSWindowController {
             let button = NSButton(radioButtonWithTitle: title, target: self, action: #selector(destinationChanged(_:)))
             button.frame = NSRect(x: 100, y: prevButton == nil ? 160 : prevButton!.frame.minY - 28, width: 280, height: 24)
             button.tag = index
-            contentView.addSubview(button)
-            radioButtons.append(button)
+            view.addSubview(button)
+            saveRadioButtons.append(button)
             prevButton = button
         }
 
-        // 現在の設定を反映
-        radioButtons[settings.saveDestination.rawValue].state = .on
+        saveRadioButtons[settings.saveDestination.rawValue].state = .on
 
         // ディレクトリ選択
         let dirLabel = NSTextField(labelWithString: "保存フォルダ:")
-        dirLabel.frame = NSRect(x: 20, y: 80, width: 80, height: 24)
+        dirLabel.frame = NSRect(x: 20, y: 60, width: 80, height: 24)
         dirLabel.alignment = .right
-        contentView.addSubview(dirLabel)
+        view.addSubview(dirLabel)
 
-        pathField = NSTextField(frame: NSRect(x: 100, y: 80, width: 200, height: 24))
+        pathField = NSTextField(frame: NSRect(x: 100, y: 60, width: 200, height: 24))
         pathField.isEditable = false
         pathField.bezelStyle = .roundedBezel
         updatePathField()
-        contentView.addSubview(pathField)
+        view.addSubview(pathField)
 
-        let chooseButton = NSButton(frame: NSRect(x: 310, y: 80, width: 70, height: 24))
+        let chooseButton = NSButton(frame: NSRect(x: 310, y: 60, width: 70, height: 24))
         chooseButton.title = "選択..."
         chooseButton.bezelStyle = .rounded
         chooseButton.target = self
         chooseButton.action = #selector(chooseDirectory)
-        contentView.addSubview(chooseButton)
+        view.addSubview(chooseButton)
 
-        // デフォルトに戻すボタン
-        let resetButton = NSButton(frame: NSRect(x: 20, y: 20, width: 140, height: 24))
-        resetButton.title = "デフォルトに戻す"
-        resetButton.bezelStyle = .rounded
-        resetButton.target = self
-        resetButton.action = #selector(resetToDefaults)
-        contentView.addSubview(resetButton)
-
-        window.contentView = contentView
-        window.center()
+        return view
     }
 
     private func updatePathField() {
@@ -123,11 +199,9 @@ class SettingsWindowController: NSWindowController {
     }
 
     @objc private func destinationChanged(_ sender: NSButton) {
-        // 他のボタンをオフにする
-        for button in radioButtons {
+        for button in saveRadioButtons {
             button.state = button === sender ? .on : .off
         }
-        // 設定を保存
         if let destination = Settings.SaveDestination(rawValue: sender.tag) {
             settings.saveDestination = destination
         }
@@ -146,14 +220,136 @@ class SettingsWindowController: NSWindowController {
         }
     }
 
-    @objc private func resetToDefaults() {
-        settings.saveDestination = .both
-        settings.saveDirectory = nil
-        updatePathField()
+    // MARK: - Detection Tab
 
-        // ラジオボタンをリセット
-        for (index, button) in radioButtons.enumerated() {
-            button.state = index == 0 ? .on : .off
+    private enum DetectionTag: Int {
+        case windowDuration = 100
+        case minPoints = 101
+        case triggerAngle = 102
+        case minRadius = 103
+        case cooldown = 104
+    }
+
+    private var detectionSliders: [DetectionTag: NSSlider] = [:]
+    private var detectionFields: [DetectionTag: NSTextField] = [:]
+
+    private func createDetectionTabView() -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 396, height: 238))
+        var y: CGFloat = 160
+
+        // ヘルプ
+        let helpLabel = NSTextField(wrappingLabelWithString: "値を大きくすると検出が厳しく、小さくすると敏感になります")
+        helpLabel.frame = NSRect(x: 20, y: y, width: 350, height: 20)
+        helpLabel.font = NSFont.systemFont(ofSize: 11)
+        helpLabel.textColor = .secondaryLabelColor
+        view.addSubview(helpLabel)
+        y -= 30
+
+        // 検出時間窓
+        addSliderRow(to: view, at: &y, tag: .windowDuration, label: "検出時間 (秒):", value: settings.windowDuration, min: 0.5, max: 3.0)
+        y -= 4
+
+        // 最小ポイント数
+        addSliderRow(to: view, at: &y, tag: .minPoints, label: "最小ポイント数:", value: Double(settings.minPoints), min: 10, max: 50)
+        y -= 4
+
+        // トリガー角度（回数）
+        addSliderRow(to: view, at: &y, tag: .triggerAngle, label: "必要回転数:", value: settings.triggerAngle, min: 0.5, max: 3.0)
+        y -= 4
+
+        // 最小半径
+        addSliderRow(to: view, at: &y, tag: .minRadius, label: "最小半径 (px):", value: settings.minRadius, min: 10, max: 100)
+        y -= 4
+
+        // クールダウン
+        addSliderRow(to: view, at: &y, tag: .cooldown, label: "クールダウン (秒):", value: settings.cooldown, min: 0.5, max: 5.0)
+
+        return view
+    }
+
+    private func addSliderRow(to view: NSView, at y: inout CGFloat, tag: DetectionTag, label: String, value: Double, min: Double, max: Double) {
+        let labelField = NSTextField(labelWithString: label)
+        labelField.frame = NSRect(x: 20, y: y, width: 110, height: 24)
+        labelField.alignment = .right
+        view.addSubview(labelField)
+
+        let slider = NSSlider(frame: NSRect(x: 135, y: y, width: 160, height: 24))
+        slider.minValue = min
+        slider.maxValue = max
+        slider.doubleValue = value
+        slider.isContinuous = true
+        slider.target = self
+        slider.action = #selector(detectionSliderChanged(_:))
+        slider.tag = tag.rawValue
+        view.addSubview(slider)
+        detectionSliders[tag] = slider
+
+        let field = NSTextField(frame: NSRect(x: 300, y: y, width: 50, height: 24))
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = tag == .minPoints ? 0 : 1
+        formatter.maximumFractionDigits = tag == .minPoints ? 0 : 1
+        field.formatter = formatter
+        field.doubleValue = value
+        field.target = self
+        field.action = #selector(detectionFieldChanged(_:))
+        field.tag = tag.rawValue
+        view.addSubview(field)
+        detectionFields[tag] = field
+
+        y -= 28
+    }
+
+    @objc private func detectionSliderChanged(_ sender: NSSlider) {
+        guard let tag = DetectionTag(rawValue: sender.tag) else { return }
+        let value = sender.doubleValue
+        detectionFields[tag]?.doubleValue = value
+        applyDetectionValue(tag: tag, value: value)
+    }
+
+    @objc private func detectionFieldChanged(_ sender: NSTextField) {
+        guard let tag = DetectionTag(rawValue: sender.tag) else { return }
+        let value = sender.doubleValue
+        detectionSliders[tag]?.doubleValue = value
+        applyDetectionValue(tag: tag, value: value)
+    }
+
+    private func applyDetectionValue(tag: DetectionTag, value: Double) {
+        switch tag {
+        case .windowDuration: settings.windowDuration = value
+        case .minPoints: settings.minPoints = Int(value)
+        case .triggerAngle: settings.triggerAngle = value
+        case .minRadius: settings.minRadius = value
+        case .cooldown: settings.cooldown = value
+        }
+    }
+
+    // MARK: - Reset
+
+    @objc private func resetCurrentTabToDefaults() {
+        let currentTab = tabView.indexOfTabViewItem(tabView.selectedTabViewItem!)
+        if currentTab == 0 {
+            // 保存先タブ
+            settings.saveDestination = .both
+            settings.saveDirectory = nil
+            updatePathField()
+            for (index, button) in saveRadioButtons.enumerated() {
+                button.state = index == 0 ? .on : .off
+            }
+        } else {
+            // 検出感度タブ
+            settings.resetDetectionToDefaults()
+            detectionSliders[.windowDuration]?.doubleValue = Settings.Defaults.windowDuration
+            detectionSliders[.minPoints]?.doubleValue = Double(Settings.Defaults.minPoints)
+            detectionSliders[.triggerAngle]?.doubleValue = Settings.Defaults.triggerAngle
+            detectionSliders[.minRadius]?.doubleValue = Settings.Defaults.minRadius
+            detectionSliders[.cooldown]?.doubleValue = Settings.Defaults.cooldown
+
+            detectionFields[.windowDuration]?.doubleValue = Settings.Defaults.windowDuration
+            detectionFields[.minPoints]?.doubleValue = Double(Settings.Defaults.minPoints)
+            detectionFields[.triggerAngle]?.doubleValue = Settings.Defaults.triggerAngle
+            detectionFields[.minRadius]?.doubleValue = Settings.Defaults.minRadius
+            detectionFields[.cooldown]?.doubleValue = Settings.Defaults.cooldown
         }
     }
 }
@@ -166,25 +362,21 @@ class SwirlDetector {
         let time: Date
     }
 
-    private let windowDuration: TimeInterval = 1.4
-    private let minPoints: Int = 25
-    private let triggerAngle: CGFloat = 2.5 * .pi  // 450° - 1周半回す必要がある
-    private let minRadius: CGFloat = 30.0
-
     private var positions: [TimedPoint] = []
     private var onCooldown = false
+    private let settings = Settings.shared
 
     var onSwirl: (([CGPoint]) -> Void)?
 
     func addPoint(_ point: CGPoint) {
         let now = Date()
         positions.append(TimedPoint(point: point, time: now))
-        positions.removeAll { now.timeIntervalSince($0.time) > windowDuration }
+        positions.removeAll { now.timeIntervalSince($0.time) > settings.windowDuration }
         checkSwirl()
     }
 
     private func checkSwirl() {
-        guard !onCooldown, positions.count >= minPoints else { return }
+        guard !onCooldown, positions.count >= settings.minPoints else { return }
         let pts = positions.map { $0.point }
         let cx = pts.map { $0.x }.reduce(0, +) / CGFloat(pts.count)
         let cy = pts.map { $0.y }.reduce(0, +) / CGFloat(pts.count)
@@ -193,8 +385,9 @@ class SwirlDetector {
         let avgRadius = pts.map {
             sqrt(pow($0.x - cx, 2) + pow($0.y - cy, 2))
         }.reduce(0, +) / CGFloat(pts.count)
-        guard avgRadius >= minRadius else { return }
+        guard avgRadius >= settings.minRadius else { return }
 
+        let triggerAngleRad = CGFloat(settings.triggerAngle * 2 * .pi)
         var totalAngle: CGFloat = 0
         for i in 1..<pts.count {
             let a1 = atan2(pts[i-1].y - center.y, pts[i-1].x - center.x)
@@ -205,7 +398,7 @@ class SwirlDetector {
             totalAngle += da
         }
 
-        if abs(totalAngle) >= triggerAngle {
+        if abs(totalAngle) >= triggerAngleRad {
             let capturedPts = pts
             startCooldown()
             onSwirl?(capturedPts)
@@ -215,7 +408,7 @@ class SwirlDetector {
     private func startCooldown() {
         onCooldown = true
         positions.removeAll()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + settings.cooldown) { [weak self] in
             self?.onCooldown = false
         }
     }
