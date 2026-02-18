@@ -561,6 +561,9 @@ class SelectionOverlayView: NSView {
 
         if event.clickCount == 2 {
             confirm()
+        } else if dragHandle == nil {
+            // 範囲外クリックでキャンセル
+            onCancel?()
         }
     }
 
@@ -835,12 +838,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var selWin: SelWin?
     private let detector = SwirlDetector()
     private var settingsWindowController: SettingsWindowController?
+    private var isPaused = false
+    private var pauseMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
         requestAccessibility()
         detector.onSwirl = { [weak self] points in
-            DispatchQueue.main.async { self?.enterSelectionMode(points: points) }
+            guard let self = self, !self.isPaused else { return }
+            DispatchQueue.main.async { self.enterSelectionMode(points: points) }
         }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
             self?.detector.addPoint(NSEvent.mouseLocation)
@@ -964,6 +970,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         i1.isEnabled = false
         menu.addItem(i1)
         menu.addItem(.separator())
+        pauseMenuItem = NSMenuItem(title: "一時停止", action: #selector(togglePause), keyEquivalent: "p")
+        menu.addItem(pauseMenuItem!)
         menu.addItem(withTitle: "設定...", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "q")
@@ -981,6 +989,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func togglePause() {
+        isPaused.toggle()
+        pauseMenuItem?.state = isPaused ? .on : .off
+        statusItem?.button?.title = isPaused ? "⏸" : "🌀"
     }
 
     @objc private func quitApp() { NSApplication.shared.terminate(nil) }
