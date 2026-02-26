@@ -775,6 +775,7 @@ class SelectionOverlayView: NSView {
 
 // MARK: - Full Screen Overlay Window
 
+/// 選択操作を受け付けるメインオーバーレイウィンドウ
 class SelWin: NSWindow {
     var overlayView: SelectionOverlayView!
 
@@ -783,14 +784,16 @@ class SelWin: NSWindow {
             contentRect: screen.frame,
             styleMask: [.borderless],
             backing: .buffered,
-            defer: false
+            defer: false,
+            screen: screen
         )
         isOpaque = false
         backgroundColor = .clear
         level = .screenSaver
         ignoresMouseEvents = false
         acceptsMouseMovedEvents = true
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .fullScreenPrimary]
+        collectionBehavior = [.fullScreenAuxiliary]
+        setFrame(screen.frame, display: true)
 
         // NSScreen座標をウィンドウローカル座標に変換
         let localRect = NSRect(
@@ -799,12 +802,31 @@ class SelWin: NSWindow {
             width: initialRect.width,
             height: initialRect.height
         )
-        overlayView = SelectionOverlayView(frame: screen.frame, initialRect: localRect)
+        overlayView = SelectionOverlayView(frame: NSRect(origin: .zero, size: screen.frame.size), initialRect: localRect)
         contentView = overlayView
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+/// 他スクリーンを暗転させるだけのウィンドウ
+class DimWin: NSWindow {
+    convenience init(screen: NSScreen) {
+        self.init(
+            contentRect: screen.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+        isOpaque = false
+        backgroundColor = NSColor.black.withAlphaComponent(0.3)
+        level = .screenSaver
+        ignoresMouseEvents = true
+        collectionBehavior = [.fullScreenAuxiliary]
+        setFrame(screen.frame, display: true)
+    }
 }
 
 // MARK: - Screen Capture
@@ -836,6 +858,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
     private var selWin: SelWin?
+    private var dimWindows: [DimWin] = []
     private let detector = SwirlDetector()
     private var settingsWindowController: SettingsWindowController?
     private var isPaused = false
@@ -854,20 +877,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func enterSelectionMode(points: [CGPoint]) {
-        guard let screen = NSScreen.main else { return }
+        let mouseLocation = NSEvent.mouseLocation
+        let activeScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
+        guard let activeScreen = activeScreen else { return }
         let initialRect = boundingRect(from: points)
 
-        let win = SelWin(screen: screen, initialRect: initialRect)
+        // 他のスクリーンを暗転
+        for screen in NSScreen.screens where screen != activeScreen {
+            let dim = DimWin(screen: screen)
+            dim.orderFront(nil)
+            dimWindows.append(dim)
+        }
+
+        let win = SelWin(screen: activeScreen, initialRect: initialRect)
 
         win.overlayView.onConfirm = { [weak self, weak win] localRect in
             win?.orderOut(nil)
+            self?.dismissDimWindows()
             self?.selWin = nil
             self?.stopKeyMonitor()
 
             // ウィンドウローカル座標 → スクリーン座標に戻す
             let screenRect = NSRect(
-                x: localRect.minX + screen.frame.minX,
-                y: localRect.minY + screen.frame.minY,
+                x: localRect.minX + activeScreen.frame.minX,
+                y: localRect.minY + activeScreen.frame.minY,
                 width: localRect.width,
                 height: localRect.height
             )
@@ -921,9 +954,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func dismissDimWindows() {
+        for dim in dimWindows { dim.orderOut(nil) }
+        dimWindows.removeAll()
+    }
+
     private func cancelSelection() {
         selWin?.orderOut(nil)
         selWin = nil
+        dismissDimWindows()
         stopKeyMonitor()
         // アプリを非アクティブにして他のアプリにフォーカスを戻す
         NSApp.deactivate()
@@ -1001,6 +1040,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 // MARK: - Entry Point
+
+// 多重起動防止
+let runningInstances = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+if runningInstances.count > 1 {
+    // 既存インスタンスをアクティブにして自分は終了
+    runningInstances.first(where: { $0 != .current })?.activate()
+    exit(0)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
