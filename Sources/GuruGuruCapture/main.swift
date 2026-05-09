@@ -15,7 +15,21 @@ class Settings {
         static let triggerAngle: Double = 1.5  // 回数（1.5 = 1周半）
         static let minRadius: Double = 30.0
         static let cooldown: Double = 2.5
+        static let ocrLanguages: [String] = ["ja-JP", "en-US"]
     }
+
+    static let allOCRLanguages: [(code: String, name: String)] = [
+        ("ja-JP", "日本語"),
+        ("en-US", "英語"),
+        ("zh-Hans", "中国語（簡体）"),
+        ("zh-Hant", "中国語（繁体）"),
+        ("ko-KR", "韓国語"),
+        ("fr-FR", "フランス語"),
+        ("de-DE", "ドイツ語"),
+        ("es-ES", "スペイン語"),
+        ("pt-BR", "ポルトガル語"),
+        ("it-IT", "イタリア語"),
+    ]
 
     enum SaveDestination: Int {
         case both = 0          // ファイル + クリップボード
@@ -85,6 +99,18 @@ class Settings {
         minRadius = Defaults.minRadius
         cooldown = Defaults.cooldown
     }
+
+    // MARK: OCR Settings
+
+    var ocrLanguages: [String] {
+        get {
+            UserDefaults.standard.stringArray(forKey: "ocr.languages")
+                ?? Defaults.ocrLanguages
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "ocr.languages")
+        }
+    }
 }
 
 extension Comparable {
@@ -103,6 +129,10 @@ class SettingsWindowController: NSWindowController {
     // 保存先タブ
     private var saveRadioButtons: [NSButton] = []
     private var pathField: NSTextField!
+
+    // OCR言語タブ
+    private var ocrLanguageCheckboxes: [NSButton] = []
+    private var ocrLanguageScrollView: NSScrollView!
 
     convenience init() {
         let window = NSWindow(
@@ -129,6 +159,12 @@ class SettingsWindowController: NSWindowController {
         detectionTab.label = "検出感度"
         detectionTab.view = createDetectionTabView()
         tabView.addTabViewItem(detectionTab)
+
+        // タブ3: OCR言語
+        let ocrTab = NSTabViewItem()
+        ocrTab.label = "OCR言語"
+        ocrTab.view = createOCRTabView()
+        tabView.addTabViewItem(ocrTab)
 
         contentView.addSubview(tabView)
 
@@ -325,6 +361,114 @@ class SettingsWindowController: NSWindowController {
         }
     }
 
+    // MARK: - OCR Language Tab
+
+    private func createOCRTabView() -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 396, height: 190))
+
+        // ヘルプ
+        let helpLabel = NSTextField(wrappingLabelWithString: "認識に使用する言語を選択してください（上から優先）")
+        helpLabel.frame = NSRect(x: 20, y: 166, width: 350, height: 20)
+        helpLabel.font = NSFont.systemFont(ofSize: 11)
+        helpLabel.textColor = .secondaryLabelColor
+        view.addSubview(helpLabel)
+
+        // スクロールビュー内にチェックボックスリスト
+        let scrollView = NSScrollView(frame: NSRect(x: 20, y: 8, width: 310, height: 154))
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .bezelBorder
+
+        let clipView = NSClipView()
+        clipView.documentCursor = NSCursor.arrow
+        scrollView.contentView = clipView
+
+        let itemCount = Settings.allOCRLanguages.count
+        let docHeight = max(154, CGFloat(itemCount) * 28 + 4)
+        let docView = NSView(frame: NSRect(x: 0, y: 0, width: 290, height: docHeight))
+        let savedLangs = settings.ocrLanguages
+        var cy: CGFloat = docHeight - 28
+
+        for (code, name) in Settings.allOCRLanguages {
+            let checkbox = NSButton(checkboxWithTitle: "\(name) (\(code))", target: self, action: #selector(ocrLanguageChanged))
+            checkbox.frame = NSRect(x: 4, y: cy, width: 280, height: 24)
+            checkbox.state = savedLangs.contains(code) ? .on : .off
+            checkbox.tag = Settings.allOCRLanguages.firstIndex(where: { $0.code == code }) ?? 0
+            docView.addSubview(checkbox)
+            ocrLanguageCheckboxes.append(checkbox)
+            cy -= 28
+        }
+        clipView.documentView = docView
+        clipView.scroll(to: NSPoint(x: 0, y: docView.frame.height - scrollView.contentSize.height))
+        scrollView.reflectScrolledClipView(clipView)
+        view.addSubview(scrollView)
+        ocrLanguageScrollView = scrollView
+
+        // 上下ボタン
+        let upButton = NSButton(frame: NSRect(x: 338, y: 120, width: 40, height: 24))
+        upButton.title = "↑"
+        upButton.bezelStyle = .rounded
+        upButton.target = self
+        upButton.action = #selector(moveOCRLanguageUp)
+        view.addSubview(upButton)
+
+        let downButton = NSButton(frame: NSRect(x: 338, y: 90, width: 40, height: 24))
+        downButton.title = "↓"
+        downButton.bezelStyle = .rounded
+        downButton.target = self
+        downButton.action = #selector(moveOCRLanguageDown)
+        view.addSubview(downButton)
+
+        return view
+    }
+
+    @objc private func ocrLanguageChanged() {
+        saveOCRLanguageOrder()
+    }
+
+    private func saveOCRLanguageOrder() {
+        let enabled = ocrLanguageCheckboxes.filter { $0.state == .on }.compactMap { tag -> String? in
+            Settings.allOCRLanguages[tag.tag].code
+        }
+        settings.ocrLanguages = enabled.isEmpty ? Settings.Defaults.ocrLanguages : enabled
+    }
+
+    @objc private func moveOCRLanguageUp() {
+        let checkboxes = ocrLanguageCheckboxes
+        for i in 1..<checkboxes.count {
+            if checkboxes[i].state == .on {
+                // 1つ上のON要素を探す
+                var prev = i - 1
+                while prev >= 0 && checkboxes[prev].state == .off { prev -= 1 }
+                if prev >= 0 {
+                    swapCheckboxStates(checkboxes[i], checkboxes[prev])
+                    break
+                }
+            }
+        }
+    }
+
+    @objc private func moveOCRLanguageDown() {
+        let checkboxes = ocrLanguageCheckboxes
+        for i in (0..<checkboxes.count - 1).reversed() {
+            if checkboxes[i].state == .on {
+                var next = i + 1
+                while next < checkboxes.count && checkboxes[next].state == .off { next += 1 }
+                if next < checkboxes.count {
+                    swapCheckboxStates(checkboxes[i], checkboxes[next])
+                    break
+                }
+            }
+        }
+    }
+
+    private func swapCheckboxStates(_ a: NSButton, _ b: NSButton) {
+        let tmp = a.state
+        a.state = b.state
+        b.state = tmp
+        saveOCRLanguageOrder()
+    }
+
     // MARK: - Reset
 
     @objc private func resetCurrentTabToDefaults() {
@@ -337,7 +481,7 @@ class SettingsWindowController: NSWindowController {
             for (index, button) in saveRadioButtons.enumerated() {
                 button.state = index == 0 ? .on : .off
             }
-        } else {
+        } else if currentTab == 1 {
             // 検出感度タブ
             settings.resetDetectionToDefaults()
             detectionSliders[.windowDuration]?.doubleValue = Settings.Defaults.windowDuration
@@ -351,6 +495,13 @@ class SettingsWindowController: NSWindowController {
             detectionFields[.triggerAngle]?.doubleValue = Settings.Defaults.triggerAngle
             detectionFields[.minRadius]?.doubleValue = Settings.Defaults.minRadius
             detectionFields[.cooldown]?.doubleValue = Settings.Defaults.cooldown
+        } else if currentTab == 2 {
+            // OCR言語タブ
+            settings.ocrLanguages = Settings.Defaults.ocrLanguages
+            for checkbox in ocrLanguageCheckboxes {
+                let code = Settings.allOCRLanguages[checkbox.tag].code
+                checkbox.state = Settings.Defaults.ocrLanguages.contains(code) ? .on : .off
+            }
         }
     }
 }
@@ -993,6 +1144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        request.recognitionLanguages = Settings.shared.ocrLanguages
 
         do {
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
