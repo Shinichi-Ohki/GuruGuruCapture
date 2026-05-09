@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "faaad6ff38e6",
+  "session_id": "be06aacb-34f0-425f-9add-f3988aa58fd8",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-09T03:28:14.390962Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Sources/GuruGuruCapture/main.swift"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "978b57b1ddea",
+  "transcript_identifier_at_start": "cac77d48-8086-4847-88b2-a2cec6dbc8be",
+  "token_usage": {
+    "input_tokens": 92,
+    "cache_creation_tokens": 67896,
+    "cache_read_tokens": 2873784,
+    "output_tokens": 3971,
+    "api_call_count": 66
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-09T03:28:14.198735Z",
+    "agent_lines": 9,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 9,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Volumes-SN7100-4TB-Project-Guruguru-Capture/be06aacb-34f0-425f-9add-f3988aa58fd8.jsonl"
+}
