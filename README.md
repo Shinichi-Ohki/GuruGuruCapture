@@ -110,6 +110,8 @@ swift build -c release --build-path ./build
 Vision frameworkでローカルOCRを行い、認識したテキストをクリップボードにコピーします。
 画像の保存は行いません。
 
+**完全オフラインで動作** — AppleのVision frameworkを使っているため、インターネット接続不要でデータが外部に送信されることもありません。
+
 ---
 
 ## 設定
