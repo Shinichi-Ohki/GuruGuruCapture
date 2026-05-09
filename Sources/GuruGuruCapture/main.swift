@@ -1,6 +1,7 @@
 import Cocoa
 import CoreGraphics
 import ApplicationServices
+import Vision
 
 // MARK: - Settings
 
@@ -430,7 +431,7 @@ class SelectionOverlayView: NSView {
         didSet { needsDisplay = true }
     }
 
-    var onConfirm: ((NSRect, Bool) -> Void)?
+    var onConfirm: ((NSRect, Bool, Bool) -> Void)?
     var onCancel: (() -> Void)?
 
     private let handleSize: CGFloat = 10
@@ -560,7 +561,7 @@ class SelectionOverlayView: NSView {
         }
 
         if event.clickCount == 2 {
-            confirm(includeCursor: event.modifierFlags.contains(.shift))
+            confirm(includeCursor: event.modifierFlags.contains(.shift), ocrMode: event.modifierFlags.contains(.command))
         } else if dragHandle == nil {
             // 範囲外クリックでキャンセル
             onCancel?()
@@ -762,14 +763,14 @@ class SelectionOverlayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 36, 76: confirm(includeCursor: event.modifierFlags.contains(.shift))  // Enter / numpad Enter
+        case 36, 76: confirm(includeCursor: event.modifierFlags.contains(.shift), ocrMode: event.modifierFlags.contains(.command))  // Enter / numpad Enter
         case 53:     onCancel?() // Esc
         default:     super.keyDown(with: event)
         }
     }
 
-    private func confirm(includeCursor: Bool) {
-        onConfirm?(selectionRect, includeCursor)
+    private func confirm(includeCursor: Bool, ocrMode: Bool) {
+        onConfirm?(selectionRect, includeCursor, ocrMode)
     }
 }
 
@@ -891,7 +892,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let win = SelWin(screen: activeScreen, initialRect: initialRect)
 
-        win.overlayView.onConfirm = { [weak self, weak win] localRect, includeCursor in
+        win.overlayView.onConfirm = { [weak self, weak win] localRect, includeCursor, ocrMode in
             win?.orderOut(nil)
             self?.dismissDimWindows()
             self?.selWin = nil
@@ -913,7 +914,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 NSCursor.unhide()
-                self?.handleCapturedImage(image, screenRect: screenRect)
+
+                if ocrMode {
+                    self?.performOCR(on: image)
+                } else {
+                    self?.handleCapturedImage(image, screenRect: screenRect)
+                }
 
                 self?.statusItem?.button?.title = "📸"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
@@ -972,6 +978,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 少し遅延してからアプリを隠す
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NSApp.hide(nil)
+        }
+    }
+
+    private func performOCR(on image: CGImage) {
+        var recognizedText = ""
+        let request = VNRecognizeTextRequest { request, _ in
+            guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
+            for observation in observations {
+                guard let candidate = observation.topCandidates(1).first else { continue }
+                if !recognizedText.isEmpty { recognizedText.append("\n") }
+                recognizedText.append(candidate.string)
+            }
+        }
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        do {
+            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        } catch {
+            print("[GuruGuruCapture] ⚠️ OCR失敗: \(error.localizedDescription)")
+            return
+        }
+
+        guard !recognizedText.isEmpty else {
+            print("[GuruGuruCapture] ℹ️ テキストが検出されませんでした")
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(recognizedText, forType: .string)
+        print("[GuruGuruCapture] 📝 OCR: \(recognizedText.prefix(100))")
+
+        statusItem?.button?.title = "📝"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            self.statusItem?.button?.title = "🌀"
         }
     }
 
