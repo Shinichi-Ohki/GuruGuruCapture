@@ -430,7 +430,7 @@ class SelectionOverlayView: NSView {
         didSet { needsDisplay = true }
     }
 
-    var onConfirm: ((NSRect) -> Void)?
+    var onConfirm: ((NSRect, Bool) -> Void)?
     var onCancel: (() -> Void)?
 
     private let handleSize: CGFloat = 10
@@ -560,7 +560,7 @@ class SelectionOverlayView: NSView {
         }
 
         if event.clickCount == 2 {
-            confirm()
+            confirm(includeCursor: event.modifierFlags.contains(.shift))
         } else if dragHandle == nil {
             // 範囲外クリックでキャンセル
             onCancel?()
@@ -762,14 +762,14 @@ class SelectionOverlayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 36, 76: confirm()  // Enter / numpad Enter
+        case 36, 76: confirm(includeCursor: event.modifierFlags.contains(.shift))  // Enter / numpad Enter
         case 53:     onCancel?() // Esc
         default:     super.keyDown(with: event)
         }
     }
 
-    private func confirm() {
-        onConfirm?(selectionRect)
+    private func confirm(includeCursor: Bool) {
+        onConfirm?(selectionRect, includeCursor)
     }
 }
 
@@ -891,7 +891,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let win = SelWin(screen: activeScreen, initialRect: initialRect)
 
-        win.overlayView.onConfirm = { [weak self, weak win] localRect in
+        win.overlayView.onConfirm = { [weak self, weak win] localRect, includeCursor in
             win?.orderOut(nil)
             self?.dismissDimWindows()
             self?.selWin = nil
@@ -906,10 +906,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                if !includeCursor { NSCursor.hide() }
                 guard let image = captureRegion(screenRect) else {
+                    NSCursor.unhide()
                     print("[GuruGuruCapture] ⚠️ キャプチャ失敗")
                     return
                 }
+                NSCursor.unhide()
                 self?.handleCapturedImage(image, screenRect: screenRect)
 
                 self?.statusItem?.button?.title = "📸"
