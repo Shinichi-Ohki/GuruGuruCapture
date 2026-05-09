@@ -1,0 +1,87 @@
+このアプリに、こんなご指摘を受けたんだけどどうだろう? これをそのまま受け入れるのではなく、まずは受け入れに値するか検討してみてください
+
+コードの改善点・修正提案 
+
+提供されたコードは非常に高品質ですが、1箇所だけクラッシュの可能性がある箇所と、より良い実装方法があります。 
+A. カスタムカーソルの生成方法 (推奨修正) 
+
+現在のコードでは NSImage.lockFocus() を使用してプログラム的にカーソル画像を生成していますが、macOS 10.14以降（特にDark Mode環境やRetina環境）では、この方法で生成した画像が真っ黒になったり、正しく描画されないことがあります。
+システム標準のカーソルを使用するか、アセットカタログの画像を使うのが安全です。 
+
+修正案 (SelectionOverlayView内): 
+swift
+
+    // 既存の create...Cursor メソッドを削除し、以下に置き換え
+    
+    private lazy var resizeNWSECursor: NSCursor = {
+        // システム標準の斜め矢印カーソルを使用（最も安全）
+        // もし自作したい場合は Assets に画像を用意すること
+        if #available(macOS 10.12, *) {
+            return NSCursor.arrow // システム標準がないため、arrowまたは自作画像を使用
+        } else {
+            return NSCursor.arrow
+        }
+        // 本来はNSCursor.imageCursor... などが使いたいが、
+        // システムが提供するリサイズカーソルは直接APIに公開されていないため、
+        // 一般的には以下のようにウィンドウ操作用のカーソルを流用するか、
+        // 画像リソースを使います。
+        // ここでは単純化のため、システムの矢印に戻すか、
+        // もしくはリソースを使う実装に変更するのがベストです。
+    }()
+ 
+あるいは、リサイズカーソルをシステムから無理やり取得する裏技的な方法もありますが、長期的には画像リソースを用意するのが確実です。簡易的には NSCursor.arrow にするか、各ハンドルの種類に応じて既存の NSCursor.resizeLeftRight などを組み合わせるのが安全です。 
+B. 最小ポイント数の型変換の安全性 
+
+Settings クラスの minPoints において、UserDefaults から読み出す際に clamped 拡張を使っていますが、整数型のデフォルト値が 0 であることに注意が必要です（UserDefaultsが未設定の場合 integer は0を返すため）。 
+
+現在の実装: 
+swift
+ 
+get { UserDefaults.standard.integer(forKey: "detection.minPoints").clamped(to: 10...50, default: Defaults.minPoints) }
+ 
+clamped 関数の実装: 
+swift
+ 
+func clamped(to range: ClosedRange<Self>, default defaultValue: Self) -> Self {
+    if self < range.lowerBound || self > range.upperBound { return defaultValue }
+    return self
+}
+ 
+これは正しく機能します。integer が0を返した場合、範囲外（10未満）と判定され、デフォルト値（25）が返るためです。問題ありません。
+
+---
+
+なるほど、ならよかったです。ありがとう
+
+---
+
+これ、キャプチャ時にマウスカーソルもキャプチャされるんだけど、だいたいの場合マウスカーソルはいらないからキャプチャには入らないようにできるだろうか。shift押しながらダブルクリックしたときだけマウスカーソルがキャプチャできるといいな
+
+---
+
+できてました。ローカルだけでいいのでコミットしておいて
+
+---
+
+そして次のリクエストなんですけど、commandを押しながらダブルクリックしてキャプチャしたら、その画像をApple の Vision framework でローカルOCRを使ってテキスト認識して、テキストをクリップボードに入れたいです。画像はクリップボードに入れなくていいです
+参考URL https://github.com/raycast/extensions/tree/186d955eda64f9e956b25a3fdf5566b1d38f57f2/extensions/screenocr
+
+---
+
+ドキュメント更新しよう
+
+---
+
+readmeも
+
+---
+
+1.3.0としてリリースしよう
+
+---
+
+loginしました!
+
+---
+
+このテキストOCRはローカル(appleのフレームワーク)で動いてるからオフラインで使えるしデータが外に出ないってreadmeに書き足して
