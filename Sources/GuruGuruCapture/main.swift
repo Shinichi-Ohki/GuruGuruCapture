@@ -1029,6 +1029,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func enterSelectionMode(points: [CGPoint]) {
+        // 既に選択モード中なら再入を無視（ぐるぐる複数回発火で枠が重複するのを防ぐ）
+        guard selWin == nil else { return }
         let mouseLocation = NSEvent.mouseLocation
         let activeScreen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
         guard let activeScreen = activeScreen else { return }
