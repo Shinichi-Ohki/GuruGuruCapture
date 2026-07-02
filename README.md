@@ -29,7 +29,6 @@
 ## 動作環境
 
 - macOS 13 Ventura 以降
-- Swift 5.9 以降（Xcode Command Line Tools でOK）
 
 ---
 
@@ -45,6 +44,8 @@
 4. 起動
 
 ### ソースからビルドする場合
+
+> Swift 5.9 以降（Xcode Command Line Tools でOK）が必要です。
 
 ```bash
 # リポジトリをクローン
