@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "0486380e9411",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "Sources/GuruGuruCapture/main.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/04/86380e9411/0/metadata.json",
+      "transcript": "/04/86380e9411/0/full.jsonl",
+      "context": "/04/86380e9411/0/context.md",
+      "content_hash": "/04/86380e9411/0/content_hash.txt",
+      "prompt": "/04/86380e9411/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 283327,
+    "cache_creation_tokens": 13839,
+    "cache_read_tokens": 9281863,
+    "output_tokens": 39835,
+    "api_call_count": 136
+  }
+}
