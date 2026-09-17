@@ -1135,6 +1135,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performOCR(on image: CGImage) {
+        // 先にQRコード・バーコードの検出を試す（見つかればデコード結果を優先）
+        if let barcode = detectBarcode(in: image) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(barcode, forType: .string)
+            print("[GuruGuruCapture] 🔳 QR/バーコード: \(barcode.prefix(100))")
+
+            statusItem?.button?.title = "🔳"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.statusItem?.button?.title = "🌀"
+            }
+            return
+        }
+
         var recognizedText = ""
         let request = VNRecognizeTextRequest { request, _ in
             guard let observations = request.results as? [VNRecognizedTextObservation] else { return }
@@ -1168,6 +1181,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
             self.statusItem?.button?.title = "🌀"
         }
+    }
+
+    private func detectBarcode(in image: CGImage) -> String? {
+        var detectedText = ""
+        let request = VNDetectBarcodesRequest { request, _ in
+            guard let observations = request.results as? [VNBarcodeObservation] else { return }
+            for observation in observations {
+                guard let value = observation.payloadStringValue else { continue }
+                if !detectedText.isEmpty { detectedText.append("\n") }
+                detectedText.append(value)
+            }
+        }
+
+        do {
+            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        } catch {
+            print("[GuruGuruCapture] ⚠️ バーコード検出失敗: \(error.localizedDescription)")
+            return nil
+        }
+
+        return detectedText.isEmpty ? nil : detectedText
     }
 
     private func handleCapturedImage(_ image: CGImage, screenRect: NSRect) {
